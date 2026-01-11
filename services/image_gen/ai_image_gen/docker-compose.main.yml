@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  api_service:
+    build: .
+    container_name: api_service_main
+    command: gunicorn api_service.main:app --workers 4 --threads 16 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./:/app

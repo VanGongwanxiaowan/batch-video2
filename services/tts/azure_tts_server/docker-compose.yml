@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  asr_service:
+    build: .
+    ports:
+      - "6016:6016"
+    environment:
+      - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}
+      - AZURE_SERVICE_REGION=${AZURE_SERVICE_REGION}
+    volumes:
+      - /root/.cache/modelscope/hub:/root/.cache/modelscope/hub
+      - /data2/home_back/gujiaxin/work/batchshort1:/data2/home_back/gujiaxin/work/batchshort1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+volumes:
+  asr_models:

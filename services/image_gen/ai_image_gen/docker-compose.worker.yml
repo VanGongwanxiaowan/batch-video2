@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  consumer_worker1:
+    build: .
+    container_name: consumer_worker_instance1
+    command: python consumer_worker/worker.py
+    # environment:
+    #   DATABASE_URL: ${DATABASE_URL}
+    #   KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    #   KAFKA_CONSUMER_GROUP_ID: ${KAFKA_CONSUMER_GROUP_ID}
+    #   KAFKA_TOPICS: ${KAFKA_TOPICS}
+    #   MODEL_CACHE_DIR: ${MODEL_CACHE_DIR}
+    #   GENERATED_IMAGES_DIR: ${GENERATED_IMAGES_DIR}
+    #   API_BASE_URL: http://192.168.191.56:8000 # Assuming api_service_main is running and accessible
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  consumer_worker2:
+    build: .
+    container_name: consumer_worker_instance2
+    command: python consumer_worker/worker.py
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+
+
+  consumer_worker3:
+    build: .
+    container_name: consumer_worker_instance3
+    command: python consumer_worker/worker.py
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
+              capabilities: [gpu]
+
+
+  consumer_worker4:
+    build: .
+    container_name: consumer_worker_instance4
+    command: python consumer_worker/worker.py
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['4']
+              capabilities: [gpu]
+
+  consumer_worker5:
+    build: .
+    container_name: consumer_worker_instance5
+    command: python consumer_worker/worker.py
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['5']
+              capabilities: [gpu]
+
+  consumer_worker6:
+    build: .
+    container_name: consumer_worker_instance6
+    command: python consumer_worker/worker.py
+    volumes:
+      - ./:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['6']
+              capabilities: [gpu]

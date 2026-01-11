@@ -1,0 +1,584 @@
+# 高可用性 Docker Compose 配置
+#
+# 此配置提供生产级的高可用性部署，包括：
+# - 服务冗余（多副本）
+# - 负载均衡
+# - 数据库主从复制
+# - Redis 哨兵模式
+# - 健康检查和自动恢复
+#
+# 使用方法：
+#   docker-compose -f docker-compose.ha.yml up -d
+
+version: '3.8'
+
+services:
+  # ===============================
+  # 负载均衡层
+  # ===============================
+
+  # Nginx 负载均衡器
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - frontend
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ===============================
+  # 应用服务层
+  # ===============================
+
+  # 后端服务实例 1
+  backend-1:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://root:password@mysql-master:3306/batchshort
+      - DATABASE_SLAVE_URL=mysql+mysqlconnector://root:password@mysql-slave:3306/batchshort
+      - REDIS_URL=redis://redis-sentinel:26379
+      - REDIS_SENTINEL_MASTER=mymaster
+      - ENVIRONMENT=production
+      - METRICS_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - TRACING_ENABLED=true
+    ports:
+      - "8006:8006"
+      - "9091:9090"  # Metrics port
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis-sentinel:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend
+      - db
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # 后端服务实例 2
+  backend-2:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://root:password@mysql-master:3306/batchshort
+      - DATABASE_SLAVE_URL=mysql+mysqlconnector://root:password@mysql-slave:3306/batchshort
+      - REDIS_URL=redis://redis-sentinel:26379
+      - REDIS_SENTINEL_MASTER=mymaster
+      - ENVIRONMENT=production
+      - METRICS_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - TRACING_ENABLED=true
+    ports:
+      - "8007:8006"
+      - "9092:9090"
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis-sentinel:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend
+      - db
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # 后端服务实例 3
+  backend-3:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://root:password@mysql-master:3306/batchshort
+      - DATABASE_SLAVE_URL=mysql+mysqlconnector://root:password@mysql-slave:3306/batchshort
+      - REDIS_URL=redis://redis-sentinel:26379
+      - REDIS_SENTINEL_MASTER=mymaster
+      - ENVIRONMENT=production
+      - METRICS_ENABLED=true
+      - RATE_LIMIT_ENABLED=true
+      - TRACING_ENABLED=true
+    ports:
+      - "8008:8006"
+      - "9093:9090"
+    depends_on:
+      mysql-master:
+        condition: service_healthy
+      redis-sentinel:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend
+      - db
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # Worker 服务（多实例）
+  worker-1:
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://root:password@mysql-master:3306/batchshort
+      - REDIS_URL=redis://redis-sentinel:26379
+      - REDIS_SENTINEL_MASTER=mymaster
+      - ENVIRONMENT=production
+      - WORKER_ID=worker-1
+      - MAX_CONCURRENT_JOBS=2
+    depends_on:
+      - mysql-master
+      - redis-sentinel
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+      - db
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  worker-2:
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=mysql+mysqlconnector://root:password@mysql-master:3306/batchshort
+      - REDIS_URL=redis://redis-sentinel:26379
+      - REDIS_SENTINEL_MASTER=mymaster
+      - ENVIRONMENT=production
+      - WORKER_ID=worker-2
+      - MAX_CONCURRENT_JOBS=2
+    depends_on:
+      - mysql-master
+      - redis-sentinel
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend
+      - db
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ===============================
+  # 数据库层（主从复制）
+  # ===============================
+
+  # MySQL 主库
+  mysql-master:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=batchshort
+      - MYSQL_BINLOG_FORMAT=ROW
+      - MYSQL_BINLOG_ROW_IMAGE=FULL
+    volumes:
+      - mysql_master_data:/var/lib/mysql
+      - ./deploy/mysql/master.cnf:/etc/mysql/conf.d/master.cnf:ro
+      - mysql_backup:/backup
+    ports:
+      - "3306:3306"
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # MySQL 从库
+  mysql-slave:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=batchshort
+      - MYSQL_RELAY_LOG=1
+      - MYSQL_RELAY_LOG_INDEX=1
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+      - ./deploy/mysql/slave.cnf:/etc/mysql/conf.d/slave.cnf:ro
+    ports:
+      - "3307:3306"
+    command: --server-id=2 --relay-log=relay-bin --read-only=1
+    depends_on:
+      - mysql-master
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ===============================
+  # 缓存层（Redis 哨兵）
+  # ===============================
+
+  # Redis 主节点
+  redis-master:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --replica-announce-ip redis-master --replica-announce-port 6379
+    volumes:
+      - redis_master_data:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Redis 从节点 1
+  redis-slave-1:
+    image: redis:7-alpine
+    command: redis-server --slaveof redis-master 6379 --replica-announce-ip redis-slave-1 --replica-announce-port 6379
+    volumes:
+      - redis_slave1_data:/data
+    ports:
+      - "6380:6379"
+    depends_on:
+      - redis-master
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Redis 从节点 2
+  redis-slave-2:
+    image: redis:7-alpine
+    command: redis-server --slaveof redis-master 6379 --replica-announce-ip redis-slave-2 --replica-announce-port 6379
+    volumes:
+      - redis_slave2_data:/data
+    ports:
+      - "6381:6379"
+    depends_on:
+      - redis-master
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Redis Sentinel 1
+  redis-sentinel-1:
+    image: redis:7-alpine
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26379:26379"
+    depends_on:
+      - redis-master
+      - redis-slave-1
+      - redis-slave-2
+    restart: always
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Redis Sentinel 2
+  redis-sentinel-2:
+    image: redis:7-alpine
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26380:26379"
+    depends_on:
+      - redis-master
+      - redis-slave-1
+      - redis-slave-2
+    restart: always
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Redis Sentinel 3
+  redis-sentinel-3:
+    image: redis:7-alpine
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./deploy/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    ports:
+      - "26381:26379"
+    depends_on:
+      - redis-master
+      - redis-slave-1
+      - redis-slave-2
+    restart: always
+    networks:
+      - cache
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # ===============================
+  # 监控层
+  # ===============================
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: always
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    restart: always
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # AlertManager
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    restart: always
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # ===============================
+  # 网络配置
+  # ===============================
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true  # 内部网络，不对外暴露
+  db:
+    driver: bridge
+    internal: true
+  cache:
+    driver: bridge
+    internal: true
+  monitoring:
+    driver: bridge
+
+# ===============================
+# 数据卷
+# ===============================
+volumes:
+  mysql_master_data:
+  mysql_slave_data:
+  redis_master_data:
+  redis_slave1_data:
+  redis_slave2_data:
+  prometheus_data:
+  grafana_data:
+  mysql_backup:
+  nginx_logs:

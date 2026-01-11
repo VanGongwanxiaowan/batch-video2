@@ -1,0 +1,13 @@
+FROM python:3.10.13
+
+WORKDIR /app
+
+ENV ENV="prod"
+ENV TZ=Asia/Shanghai
+
+COPY . /app
+
+RUN pip install poetry
+RUN poetry install
+
+CMD ["poetry", "run", "uvicorn", "backend.main:app", "--log-level", "error", "--host", "0.0.0.0", "--port", "8002"]

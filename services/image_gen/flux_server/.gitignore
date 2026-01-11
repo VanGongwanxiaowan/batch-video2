@@ -1,0 +1,9 @@
+*.wav
+*.png
+*.mp4
+*__pycache__*
+.gradio*
+*.log
+model_server/models*
+
+celerybeat-schedule.*

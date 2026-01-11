@@ -1,0 +1,11 @@
+fastapi
+pydantic
+diffusers
+torch
+Pillow
+PyYAML
+uvicorn
+transformers
+sentencepiece
+peft
+gunicorn

@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # backend1:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - TZ=Asia/Shanghai
+  #     - LANG=zh_CN.UTF-8
+  #     - LANGUAGE=zh_CN:zh
+  #     - LC_ALL=zh_CN.UTF-8
+  #   volumes:
+  #     - ./app/logs:/app/logs
+  #     - /data2:/data2
+  #   ports:
+  #     - "8010:8010"
+  #   command: bash ./start.sh
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             device_ids: ['0']
+  #             capabilities: [gpu]
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  # backend2:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     - TZ=Asia/Shanghai
+  #     - LANG=zh_CN.UTF-8
+  #     - LANGUAGE=zh_CN:zh
+  #     - LC_ALL=zh_CN.UTF-8
+  #   volumes:
+  #     - ./app/logs:/app/logs
+  #     - /data2:/data2
+  #   ports:
+  #     - "8011:8010"
+  #   command: bash ./start.sh
+  #   restart: unless-stopped
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             device_ids: ['1']
+  #             capabilities: [gpu]
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  
+  backend3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TZ=Asia/Shanghai
+      - LANG=zh_CN.UTF-8
+      - LANGUAGE=zh_CN:zh
+      - LC_ALL=zh_CN.UTF-8
+    volumes:
+      - ./app/logs:/app/logs
+      - /data2:/data2
+    ports:
+      - "8012:8010"
+    command: bash ./start.sh
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  backend4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TZ=Asia/Shanghai
+      - LANG=zh_CN.UTF-8
+      - LANGUAGE=zh_CN:zh
+      - LC_ALL=zh_CN.UTF-8
+    volumes:
+      - ./app/logs:/app/logs
+      - /data2:/data2
+    ports:
+      - "8014:8010"
+    command: bash ./start.sh
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5     
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8015:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      # - backend1
+      # - backend2
+      - backend3
+      - backend4
+    restart: unless-stopped

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  seedvc_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - TZ=Asia/Shanghai
+      - LANG=zh_CN.UTF-8
+      - LANGUAGE=zh_CN:zh
+      - LC_ALL=zh_CN.UTF-8
+      # 阿里云 TTS 配置（可选）
+      - ACCESS_KEY_ID=${ACCESS_KEY_ID:-}
+      - ACCESS_KEY_SECRET=${ACCESS_KEY_SECRET:-}
+      - APP_KEY=${APP_KEY:-}
+      # EdgeTTS 代理配置（可选）
+      - PROXY=${PROXY:-}
+    volumes:
+      # 日志目录
+      - ./logs:/app/logs
+      # 临时文件目录
+      - ./temp:/app/temp
+      # 模型目录（如果需要挂载）
+      # - ./models:/app/models
+    ports:
+      - "8007:8000"
+    working_dir: /app
+    command: gunicorn --bind 0.0.0.0:8000 -w 16 -k uvicorn.workers.UvicornWorker --timeout 120 --graceful-timeout 30 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 tts_seedvc:app
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 注意：device_ids 应根据实际 GPU 设备调整
+              device_ids: ['0']
+              capabilities: [gpu]

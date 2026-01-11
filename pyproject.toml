@@ -1,0 +1,195 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batchshort"
+version = "1.0.0"
+description = "Batch short video processing system"
+authors = [
+    {name = "宫凡VanGong", email = "vangongwanxiaowan@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "fastapi>=0.68.0",
+    "uvicorn>=0.15.0",
+    "sqlalchemy>=1.4.0",
+    "pymysql>=1.0.2",
+    "pydantic>=1.8.0",
+    "pydantic-settings>=2.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "python-multipart>=0.0.5",
+    "python-dotenv>=0.19.0",
+    "alembic>=1.7.4",
+    "redis>=4.0.0",
+    "kafka-python>=2.0.2",
+    "requests>=2.26.0",
+    "pytz>=2021.3",
+    "python-dateutil>=2.8.2",
+    # Celery 分布式任务队列
+    "celery>=5.3.0",
+    "flower>=2.0.0",  # Celery 监控工具
+    "gevent>=23.0.0",  # 高性能并发库
+    # 监控与可观测性
+    "prometheus-client>=0.16.0",  # Prometheus 指标收集
+    "python-json-logger>=2.0.0",  # JSON 格式日志
+    "psutil>=5.9.0",  # 系统资源监控
+    # 安全相关
+    "cryptography>=41.0.0",  # 加密库
+    "bcrypt>=4.0.0",  # 密码哈希
+    "passlib[bcrypt]>=1.7.4",  # 密码哈希
+    "python-multipart>=0.0.5",  # 文件上传支持
+]
+
+[project.optional-dependencies]
+dev = [
+    # 代码质量和测试
+    "pytest>=6.2.5",
+    "pytest-cov>=2.12.1",
+    "pytest-mock>=3.10.0",
+    "pytest-asyncio>=0.16.0",
+    "pytest-xdist>=2.5.0",
+    "black>=21.12b0",
+    "isort>=5.10.1",
+    "mypy>=0.931",
+    "flake8>=4.0.1",
+    "flake8-bugbear>=22.1.11",
+    "flake8-comprehensions>=3.8.0",
+    "flake8-docstrings>=1.6.0",
+    "flake8-import-order>=0.18.1",
+    "pylint>=2.12.2",
+    "bandit>=1.7.0",
+    "safety>=1.10.3",
+
+    # 文档
+    "sphinx>=4.3.1",
+    "sphinx-rtd-theme>=1.0.0",
+    "sphinx-autodoc-typehints>=1.15.2",
+    "myst-parser>=0.16.1",
+
+    # 开发工具
+    "pre-commit>=2.16.0",
+    "ipython>=8.0.0",
+    "ipdb>=0.13.9",
+    "jupyter>=1.0.0",
+
+    # 监控与可观测性 (可选)
+    "jaeger-client>=4.8.0",  # Jaeger 分布式追踪
+    "opentelemetry-api>=1.15.0",  # OpenTelemetry 支持
+    "opentelemetry-sdk>=1.15.0",
+    "opentelemetry-instrumentation-fastapi>=0.36b0",
+    "httpx>=0.24.0",  # 用于 HTTP 健康检查
+]
+
+# 监控相关依赖 (可选安装)
+monitoring = [
+    "prometheus-client>=0.16.0",
+    "jaeger-client>=4.8.0",
+    "opentelemetry-api>=1.15.0",
+    "opentelemetry-sdk>=1.15.0",
+    "opentelemetry-instrumentation-fastapi>=0.36b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.36b0",
+    "opentelemetry-instrumentation-redis>=0.36b0",
+    "opentelemetry-instrumentation-httpx>=0.36b0",
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# Ignore specific modules or directories
+[[tool.mypy.overrides]]
+module = [
+    "gushi.*",
+    "clients.*",
+    "utils.*",
+    "worker_main.*",
+    "db.*",
+]
+ignore_errors = true
+
+# Specific configurations for different parts of the codebase
+[[tool.mypy.overrides]]
+module = "services.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "core.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
+known_first_party = ["core", "services", "config"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --cov=./ --cov-report=term-missing"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["core", "services"]
+omit = [
+    "**/tests/*",
+    "**/migrations/*",
+    "**/__init__.py"
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError"
+]

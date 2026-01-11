@@ -1,0 +1,566 @@
+"""Pipeline 步骤结果类型定义
+
+This module defines the result types returned by pipeline steps.
+Using explicit result types instead of mutating PipelineContext provides:
+- Type safety: Clear input/output types
+- Testability: Easy to test individual steps
+- Data flow clarity: Explicit dependencies between steps
+- Decoupling: Steps don't need to know about context structure
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TypeVar, Generic
+
+from core.logging_config import setup_logging
+
+logger = setup_logging(__name__)
+
+
+T = TypeVar('T')
+
+
+@dataclass
+class StepResult:
+    """Base class for step execution results.
+
+    Each step returns a StepResult (or subclass) containing:
+    - step_name: Name of the step that produced this result
+    - data: The actual output data
+    - metadata: Additional metadata (execution time, status, etc.)
+
+    This design allows steps to be pure functions that don't mutate context.
+    """
+
+    step_name: str
+    data: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # Default step name for subclasses (override in subclass)
+    _default_step_name: str = "Step"
+
+    def __post_init__(self):
+        """Validate and log result creation."""
+        if not self.step_name:
+            raise ValueError("step_name cannot be empty")
+
+        logger.debug(
+            f"Created StepResult: step_name={self.step_name}, "
+            f"data_keys={list(self.data.keys())}, "
+            f"metadata_keys={list(self.metadata.keys())}"
+        )
+
+    def _auto_populate_data(
+        self,
+        field_mappings: Dict[str, Optional[str]]
+    ) -> None:
+        """Auto-populate data dict from instance fields.
+
+        Helper method for subclasses to eliminate duplication in __post_init__.
+
+        Args:
+            field_mappings: Dict mapping {field_name: data_key}
+                          If data_key is None, uses field_name as key
+                          Only includes non-None/non-empty values
+
+        Example:
+            self._auto_populate_data({
+                'audio_path': None,      # data['audio_path'] = self.audio_path
+                'duration': 'audio_duration',  # data['audio_duration'] = self.duration
+            })
+        """
+        for field_name, data_key in field_mappings.items():
+            # Guard clause: skip if field doesn't exist
+            if not hasattr(self, field_name):
+                continue
+
+            value = getattr(self, field_name)
+
+            # Guard clause: skip None values
+            if value is None:
+                continue
+
+            # Guard clause: skip empty collections
+            if isinstance(value, (list, dict)) and len(value) == 0:
+                continue
+
+            # Use field_name as data_key if not specified
+            key = data_key if data_key is not None else field_name
+            self.data[key] = value
+
+    def _set_default_step_name(self) -> None:
+        """Set default step name if not provided.
+
+        Helper for subclasses to use in their __post_init__.
+        """
+        if not hasattr(self, 'step_name') or not self.step_name:
+            self.step_name = self._default_step_name
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value from data dict.
+
+        Args:
+            key: Key to retrieve
+            default: Default value if key not found
+
+        Returns:
+            The value or default
+        """
+        return self.data.get(key, default)
+
+    def has(self, key: str) -> bool:
+        """Check if key exists in data.
+
+        Args:
+            key: Key to check
+
+        Returns:
+            True if key exists
+        """
+        return key in self.data
+
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in data dict.
+
+        Args:
+            key: Key to set
+            value: Value to set
+        """
+        self.data[key] = value
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert result to dictionary.
+
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "step": self.step_name,
+            "data": self.data,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_context(
+        cls,
+        step_name: str,
+        context: 'PipelineContext',
+        keys: List[str]
+    ) -> 'StepResult':
+        """Create StepResult from context attributes.
+
+        This is a compatibility helper for migrating from context-based steps.
+
+        Args:
+            step_name: Name of the step
+            context: PipelineContext instance
+            keys: List of attribute names to copy from context
+
+        Returns:
+            StepResult with data copied from context
+        """
+        data = {}
+        for key in keys:
+            if hasattr(context, key):
+                value = getattr(context, key)
+                # Only include non-None values
+                if value is not None:
+                    data[key] = value
+
+        return cls(step_name=step_name, data=data)
+
+    def merge_to_context(self, context: 'PipelineContext') -> None:
+        """Merge result data into PipelineContext.
+
+        This is a compatibility helper for gradual migration.
+
+        Args:
+            context: PipelineContext to merge into
+        """
+        for key, value in self.data.items():
+            setattr(context, key, value)
+
+
+@dataclass
+class TTSResult(StepResult):
+    """Result from TTS generation step.
+
+    Contains:
+    - audio_path: Path to generated audio file
+    - srt_path: Path to generated subtitle file
+    - duration: Audio duration in seconds
+    """
+
+    _default_step_name: str = "TTSGeneration"
+
+    audio_path: Optional[str] = None
+    srt_path: Optional[str] = None
+    duration: Optional[float] = None
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields (skips None values)
+        self._auto_populate_data({
+            'audio_path': None,
+            'srt_path': None,
+            'duration': None,
+        })
+
+        # Add duration to metadata
+        if self.duration is not None:
+            self.metadata['duration'] = self.duration
+
+    @property
+    def audio_file(self) -> Optional[Path]:
+        """Get audio path as Path object."""
+        return Path(self.audio_path) if self.audio_path else None
+
+    @property
+    def srt_file(self) -> Optional[Path]:
+        """Get SRT path as Path object."""
+        return Path(self.srt_path) if self.srt_path else None
+
+
+@dataclass
+class SubtitleResult(StepResult):
+    """Result from subtitle generation step.
+
+    Contains:
+    - srt_path: Path to generated subtitle file
+    - subtitle_count: Number of subtitle entries
+    """
+
+    _default_step_name: str = "SubtitleGeneration"
+
+    srt_path: Optional[str] = None
+    subtitle_count: int = 0
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields
+        self._auto_populate_data({
+            'srt_path': None,
+            'subtitle_count': None,
+        })
+
+        # Add subtitle count to metadata
+        self.metadata['subtitle_count'] = self.subtitle_count
+
+
+@dataclass
+class SplitResult(StepResult):
+    """Result from text splitting step.
+
+    Contains:
+    - splits: List of split dictionaries
+    - split_count: Number of splits
+    """
+
+    _default_step_name: str = "TextSplit"
+
+    splits: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields
+        self._auto_populate_data({
+            'splits': None,
+        })
+
+        # Add split count to metadata
+        self.metadata['split_count'] = len(self.splits)
+
+    @property
+    def split_count(self) -> int:
+        """Get number of splits."""
+        return len(self.splits)
+
+    def get_split(self, index: int) -> Optional[Dict[str, Any]]:
+        """Get a specific split by index.
+
+        Args:
+            index: Split index
+
+        Returns:
+            Split dictionary or None
+        """
+        if 0 <= index < len(self.splits):
+            return self.splits[index]
+        return None
+
+
+@dataclass
+class ImageResult(StepResult):
+    """Result from image generation step.
+
+    Contains:
+    - image_paths: List of generated image paths
+    - selected_images: List of selected image paths
+    - generation_time: Total generation time
+    - parallel_count: Number of parallel tasks used
+    """
+
+    _default_step_name: str = "ImageGeneration"
+
+    image_paths: List[str] = field(default_factory=list)
+    selected_images: List[str] = field(default_factory=list)
+    generation_time: float = 0.0
+    parallel_count: int = 0
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields
+        self._auto_populate_data({
+            'image_paths': None,
+            'selected_images': None,
+        })
+
+        # Add metadata
+        self.metadata['image_count'] = len(self.image_paths)
+        self.metadata['generation_time'] = self.generation_time
+        if self.parallel_count > 0:
+            self.metadata['parallel_count'] = self.parallel_count
+
+    @property
+    def image_count(self) -> int:
+        """Get number of images."""
+        return len(self.image_paths)
+
+    def get_image_path(self, index: int) -> Optional[str]:
+        """Get image path by index.
+
+        Args:
+            index: Image index
+
+        Returns:
+            Image path or None
+        """
+        if 0 <= index < len(self.image_paths):
+            return self.image_paths[index]
+        return None
+
+    @property
+    def speedup_factor(self) -> float:
+        """Calculate theoretical speedup from parallelization.
+
+        Returns:
+            Speedup factor (parallel_count if generation_time > 0)
+        """
+        if self.parallel_count > 0 and self.generation_time > 0:
+            return self.parallel_count
+        return 1.0
+
+
+@dataclass
+class VideoResult(StepResult):
+    """Result from video composition step.
+
+    Contains:
+    - video_path: Path to composed video file
+    - duration: Video duration in seconds
+    - segment_count: Number of video segments
+    """
+
+    _default_step_name: str = "VideoComposition"
+
+    video_path: Optional[str] = None
+    duration: float = 0.0
+    segment_count: int = 0
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields (video_path may be None)
+        self.data = {}
+        if self.video_path is not None:
+            self.data['video_path'] = self.video_path
+        self.data['duration'] = self.duration
+        self.data['segment_count'] = self.segment_count
+
+        # Add metadata
+        self.metadata['duration'] = self.duration
+        self.metadata['segment_count'] = self.segment_count
+
+    @property
+    def video_file(self) -> Optional[Path]:
+        """Get video path as Path object."""
+        return Path(self.video_path) if self.video_path else None
+
+
+@dataclass
+class DigitalHumanResult(StepResult):
+    """Result from digital human step.
+
+    Contains:
+    - human_video_path: Path to digital human video
+    - human_duration: Duration of digital human video
+    """
+
+    _default_step_name: str = "DigitalHuman"
+
+    human_video_path: Optional[str] = None
+    human_duration: float = 0.0
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields (human_video_path may be None)
+        self.data = {}
+        if self.human_video_path is not None:
+            self.data['human_video_path'] = self.human_video_path
+        self.data['human_duration'] = self.human_duration
+
+        # Add metadata
+        self.metadata['human_duration'] = self.human_duration
+
+    @property
+    def human_video_file(self) -> Optional[Path]:
+        """Get human video path as Path object."""
+        return Path(self.human_video_path) if self.human_video_path else None
+
+
+@dataclass
+class PostProcessResult(StepResult):
+    """Result from post-processing step.
+
+    Contains:
+    - final_video_path: Path to final processed video
+    - processing_steps: List of processing steps applied
+    """
+
+    _default_step_name: str = "PostProcessing"
+
+    final_video_path: Optional[str] = None
+    processing_steps: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields (final_video_path may be None)
+        self.data = {}
+        if self.final_video_path is not None:
+            self.data['final_video_path'] = self.final_video_path
+        self.data['processing_steps'] = self.processing_steps
+
+        # Add metadata
+        self.metadata['processing_steps'] = self.processing_steps
+
+    @property
+    def final_video_file(self) -> Optional[Path]:
+        """Get final video path as Path object."""
+        return Path(self.final_video_path) if self.final_video_path else None
+
+
+@dataclass
+class UploadResult(StepResult):
+    """Result from upload step.
+
+    Contains:
+    - upload_urls: Dictionary of upload URLs
+    - upload_status: Upload status
+    - file_sizes: Dictionary of file sizes
+    """
+
+    _default_step_name: str = "Upload"
+
+    upload_urls: Dict[str, str] = field(default_factory=dict)
+    upload_status: str = "pending"
+    file_sizes: Dict[str, int] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Validate and set data."""
+        self._set_default_step_name()
+
+        # Auto-populate data from fields (empty dicts are skipped by helper)
+        self.data = {}
+        if self.upload_urls:
+            self.data['upload_urls'] = self.upload_urls
+        self.data['upload_status'] = self.upload_status
+        if self.file_sizes:
+            self.data['file_sizes'] = self.file_sizes
+
+        # Add metadata
+        self.metadata['upload_status'] = self.upload_status
+        if self.file_sizes:
+            self.metadata['total_size'] = sum(self.file_sizes.values())
+
+    @property
+    def is_success(self) -> bool:
+        """Check if upload was successful."""
+        return self.upload_status == "success"
+
+    @property
+    def total_size(self) -> int:
+        """Get total upload size."""
+        return sum(self.file_sizes.values())
+
+
+@dataclass
+class StepError:
+    """Represents an error that occurred during step execution.
+
+    Attributes:
+        step_name: Name of the step that failed
+        error_type: Type of error
+        error_message: Error message
+        traceback: Optional traceback string
+        timestamp: When the error occurred
+        context: Optional context data
+    """
+
+    step_name: str
+    error_type: str
+    error_message: str
+    traceback: Optional[str] = None
+    timestamp: datetime = field(default_factory=datetime.now)
+    context: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "step_name": self.step_name,
+            "error_type": self.error_type,
+            "error_message": self.error_message,
+            "traceback": self.traceback,
+            "timestamp": self.timestamp.isoformat(),
+            "context": self.context,
+        }
+
+    def __str__(self) -> str:
+        """String representation."""
+        return f"{self.step_name}: {self.error_type} - {self.error_message}"
+
+
+# Type aliases for better readability
+StepResultType = TypeVar('StepResultType', bound=StepResult)
+
+
+__all__ = [
+    # Base result type
+    "StepResult",
+    # Specific result types
+    "TTSResult",
+    "SubtitleResult",
+    "SplitResult",
+    "ImageResult",
+    "VideoResult",
+    "DigitalHumanResult",
+    "PostProcessResult",
+    "UploadResult",
+    # Error type
+    "StepError",
+    # Type aliases
+    "StepResultType",
+]
