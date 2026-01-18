@@ -5640,6 +5640,6 @@ MIT License 是一种非常宽松的开源许可证，允许：
 
 ## 联系方式
 
-- **作者**: 宫凡VanGong
+- **作者**: 宫承瑞VanGong
 - **GitHub**: [VanGongwanxiaowan/batch-video](https://github.com/VanGongwanxiaowan/batch-video)
 - **邮箱**: gongfan1213@163.com
